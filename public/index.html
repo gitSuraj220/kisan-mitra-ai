@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>किसान मित्र AI - Kisan Mitra</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a4a1a 0%, #2d7a2d 50%, #1a4a1a 100%);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* Header */
+    header {
+      width: 100%;
+      background: rgba(0,0,0,0.35);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .logo {
+      font-size: 38px;
+      line-height: 1;
+    }
+    .header-text h1 {
+      font-size: 22px;
+      color: #f0f0f0;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .header-text p {
+      font-size: 13px;
+      color: #a8e6a8;
+      margin-top: 2px;
+    }
+    .header-right {
+      margin-left: auto;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .lang-badge {
+      background: rgba(255,255,255,0.15);
+      color: #d4f7d4;
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+
+    /* Main container */
+    .container {
+      width: 100%;
+      max-width: 800px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 68px);
+    }
+
+    /* Quick questions */
+    .quick-questions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .quick-btn {
+      background: rgba(255,255,255,0.12);
+      color: #e8f5e8;
+      border: 1px solid rgba(255,255,255,0.2);
+      padding: 7px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover {
+      background: rgba(255,255,255,0.25);
+      transform: translateY(-1px);
+    }
+
+    /* Chat box */
+    .chat-box {
+      flex: 1;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      scroll-behavior: smooth;
+    }
+    .chat-box::-webkit-scrollbar { width: 5px; }
+    .chat-box::-webkit-scrollbar-track { background: transparent; }
+    .chat-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 10px; }
+
+    /* Welcome message */
+    .welcome-msg {
+      text-align: center;
+      padding: 30px 20px;
+      color: #b8e6b8;
+    }
+    .welcome-msg .welcome-icon { font-size: 60px; margin-bottom: 10px; }
+    .welcome-msg h2 { font-size: 22px; color: #e8f5e8; margin-bottom: 6px; }
+    .welcome-msg p { font-size: 14px; line-height: 1.6; color: #a0d8a0; }
+
+    /* Messages */
+    .message {
+      display: flex;
+      gap: 10px;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+    .message.user { flex-direction: row-reverse; }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .avatar.bot { background: linear-gradient(135deg, #2e7d32, #66bb6a); }
+    .avatar.user-av { background: linear-gradient(135deg, #1565c0, #42a5f5); }
+
+    .bubble {
+      max-width: 75%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 15px;
+      line-height: 1.6;
+    }
+    .message.bot .bubble {
+      background: rgba(255,255,255,0.12);
+      color: #f0f9f0;
+      border-top-left-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .message.user .bubble {
+      background: linear-gradient(135deg, #1b5e20, #2e7d32);
+      color: #f0fff0;
+      border-top-right-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.15);
+    }
+
+    /* Speak button on bot messages */
+    .speak-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 16px;
+      padding: 4px;
+      opacity: 0.6;
+      transition: opacity 0.2s;
+      align-self: flex-end;
+      color: #fff;
+    }
+    .speak-btn:hover { opacity: 1; }
+
+    /* Typing indicator */
+    .typing {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #a0d8a0;
+      font-size: 13px;
+      padding: 8px 0;
+    }
+    .typing-dots span {
+      display: inline-block;
+      width: 7px;
+      height: 7px;
+      background: #66bb6a;
+      border-radius: 50%;
+      animation: bounce 1.2s infinite;
+    }
+    .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce { 0%,80%,100%{transform:scale(0.6)} 40%{transform:scale(1)} }
+
+    /* Input area */
+    .input-area {
+      margin-top: 12px;
+      background: rgba(0,0,0,0.3);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 16px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+    }
+    textarea {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #f0f0f0;
+      font-size: 15px;
+      resize: none;
+      max-height: 120px;
+      min-height: 40px;
+      line-height: 1.5;
+      font-family: inherit;
+    }
+    textarea::placeholder { color: rgba(255,255,255,0.4); }
+
+    .action-btns {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      transition: all 0.2s;
+    }
+    .voice-btn {
+      background: rgba(255,255,255,0.1);
+      color: #fff;
+    }
+    .voice-btn:hover { background: rgba(255,255,255,0.2); }
+    .voice-btn.recording {
+      background: #e53935;
+      animation: pulse 1s infinite;
+      color: #fff;
+    }
+    @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(229,57,53,0.4)} 50%{box-shadow:0 0 0 8px rgba(229,57,53,0)} }
+
+    .send-btn {
+      background: linear-gradient(135deg, #2e7d32, #43a047);
+      color: #fff;
+    }
+    .send-btn:hover { background: linear-gradient(135deg, #1b5e20, #2e7d32); transform: scale(1.05); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .clear-btn {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.6);
+      font-size: 13px;
+      width: auto;
+      padding: 0 12px;
+      border-radius: 20px;
+      height: 36px;
+    }
+    .clear-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
+
+    /* Voice status */
+    .voice-status {
+      text-align: center;
+      font-size: 13px;
+      color: #ff8a80;
+      padding: 6px 0 2px;
+      min-height: 22px;
+    }
+
+    /* Scrollbar */
+    textarea::-webkit-scrollbar { width: 4px; }
+    textarea::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+
+    /* Responsive */
+    @media (max-width: 600px) {
+      .header-text h1 { font-size: 18px; }
+      .quick-btn { font-size: 12px; padding: 6px 10px; }
+      .bubble { max-width: 88%; font-size: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🌾</div>
+  <div class="header-text">
+    <h1>किसान मित्र AI</h1>
+    <p>Your Farming AI Assistant | आपका खेती का AI साथी</p>
+  </div>
+  <div class="header-right">
+    <span class="lang-badge">🇮🇳 Hindi + English</span>
+  </div>
+</header>
+
+<div class="container">
+  <!-- Quick question buttons -->
+  <div class="quick-questions" id="quickQuestions">
+    <button class="quick-btn" onclick="askQuick('गेहूं में कौन सी खाद डालें?')">🌾 गेहूं की खाद</button>
+    <button class="quick-btn" onclick="askQuick('धान की फसल में कीट लगे हैं, क्या करें?')">🐛 धान के कीट</button>
+    <button class="quick-btn" onclick="askQuick('PM-KISAN योजना के बारे में बताओ')">💰 PM-KISAN</button>
+    <button class="quick-btn" onclick="askQuick('टमाटर उगाने का सही तरीका बताओ')">🍅 टमाटर खेती</button>
+    <button class="quick-btn" onclick="askQuick('मिट्टी परीक्षण कैसे कराएं?')">🌱 मिट्टी परीक्षण</button>
+    <button class="quick-btn" onclick="askQuick('Drip irrigation के फायदे क्या हैं?')">💧 ड्रिप सिंचाई</button>
+  </div>
+
+  <!-- Chat messages -->
+  <div class="chat-box" id="chatBox">
+    <div class="welcome-msg" id="welcomeMsg">
+      <div class="welcome-icon">👨‍🌾</div>
+      <h2>नमस्ते! मैं किसान मित्र हूँ</h2>
+      <p>खेती, खाद, बीज, फसल, सरकारी योजनाओं — किसी भी विषय पर सवाल पूछें।<br/>
+      आप हिंदी या English में बात कर सकते हैं।<br/><br/>
+      <strong>🎤 Voice feature भी है!</strong> नीचे माइक बटन दबाकर बोलें।</p>
+    </div>
+  </div>
+
+  <!-- Voice status -->
+  <div class="voice-status" id="voiceStatus"></div>
+
+  <!-- Input area -->
+  <div class="input-area">
+    <textarea
+      id="userInput"
+      placeholder="यहाँ अपना सवाल लिखें... (Write your question here)"
+      rows="1"
+      onkeydown="handleKeyDown(event)"
+      oninput="autoResize(this)"
+    ></textarea>
+    <div class="action-btns">
+      <button class="icon-btn clear-btn" onclick="clearChat()" title="Clear chat">🗑️</button>
+      <button class="icon-btn voice-btn" id="voiceBtn" onclick="toggleVoice()" title="Voice input">🎤</button>
+      <button class="icon-btn send-btn" id="sendBtn" onclick="sendMessage()" title="Send">➤</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+  let isRecording = false;
+  let recognition = null;
+  let currentUtterance = null;
+  let isSpeaking = false;
+
+  // Auto-resize textarea
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  // Handle Enter key
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  // Quick question
+  function askQuick(q) {
+    document.getElementById('userInput').value = q;
+    autoResize(document.getElementById('userInput'));
+    sendMessage();
+  }
+
+  // Append message to chat
+  function appendMessage(role, content, animate = true) {
+    const chatBox = document.getElementById('chatBox');
+    const welcome = document.getElementById('welcomeMsg');
+    if (welcome) welcome.remove();
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = `message ${role}`;
+
+    if (role === 'bot') {
+      msgDiv.innerHTML = `
+        <div class="avatar bot">🌾</div>
+        <div class="bubble" id="bubble_${Date.now()}">${formatText(content)}</div>
+        <button class="speak-btn" onclick="speakText(this)" data-text="${escapeAttr(content)}" title="Listen / सुनें">🔊</button>
+      `;
+    } else {
+      msgDiv.innerHTML = `
+        <div class="bubble">${escapeHtml(content)}</div>
+        <div class="avatar user-av">👤</div>
+      `;
+    }
+
+    chatBox.appendChild(msgDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return msgDiv;
+  }
+
+  function escapeHtml(text) {
+    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function escapeAttr(text) {
+    return text.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function formatText(text) {
+    return text
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/^### (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^## (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^# (.+)$/gm, '<strong>$1</strong>')
+      .replace(/^- (.+)$/gm, '• $1')
+      .replace(/^\d+\. (.+)$/gm, (m) => m)
+      .replace(/\n/g, '<br/>');
+  }
+
+  // Send message
+  async function sendMessage() {
+    const input = document.getElementById('userInput');
+    const msg = input.value.trim();
+    if (!msg) return;
+
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+    input.value = '';
+    input.style.height = 'auto';
+
+    appendMessage('user', msg);
+
+    // Show typing indicator
+    const chatBox = document.getElementById('chatBox');
+    const typingDiv = document.createElement('div');
+    typingDiv.className = 'message bot';
+    typingDiv.id = 'typing';
+    typingDiv.innerHTML = `
+      <div class="avatar bot">🌾</div>
+      <div class="typing">
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+        <span>सोच रहा हूँ...</span>
+      </div>
+    `;
+    chatBox.appendChild(typingDiv);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: msg, sessionId }),
+      });
+
+      // Remove typing indicator
+      document.getElementById('typing')?.remove();
+
+      if (!response.ok) {
+        const err = await response.json();
+        appendMessage('bot', '❌ ' + (err.error || 'कुछ गलत हो गया। फिर से कोशिश करें।'));
+        sendBtn.disabled = false;
+        return;
+      }
+
+      // Create bot message bubble for streaming
+      const welcome = document.getElementById('welcomeMsg');
+      if (welcome) welcome.remove();
+
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'message bot';
+      const bubbleId = 'bubble_' + Date.now();
+      msgDiv.innerHTML = `
+        <div class="avatar bot">🌾</div>
+        <div class="bubble" id="${bubbleId}"></div>
+        <button class="speak-btn" id="speak_${bubbleId}" onclick="speakText(this)" data-text="" title="Listen / सुनें">🔊</button>
+      `;
+      chatBox.appendChild(msgDiv);
+
+      const bubble = document.getElementById(bubbleId);
+      const speakBtn = document.getElementById('speak_' + bubbleId);
+      let fullText = '';
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'text') {
+                fullText += data.content;
+                bubble.innerHTML = formatText(fullText);
+                chatBox.scrollTop = chatBox.scrollHeight;
+              } else if (data.type === 'done') {
+                speakBtn.dataset.text = fullText;
+              }
+            } catch {}
+          }
+        }
+      }
+
+    } catch (err) {
+      document.getElementById('typing')?.remove();
+      appendMessage('bot', '❌ Connection error. कृपया internet connection check करें।');
+    }
+
+    sendBtn.disabled = false;
+    input.focus();
+  }
+
+  // Text-to-Speech
+  function speakText(btn) {
+    const text = btn.dataset.text || btn.getAttribute('data-text');
+    if (!text) return;
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      isSpeaking = false;
+      btn.textContent = '🔊';
+      return;
+    }
+
+    if (!('speechSynthesis' in window)) {
+      alert('आपका browser voice playback support नहीं करता।');
+      return;
+    }
+
+    // Reset all speak buttons
+    document.querySelectorAll('.speak-btn').forEach(b => b.textContent = '🔊');
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = detectLang(text);
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
+
+    // Try to find a Hindi voice
+    const voices = window.speechSynthesis.getVoices();
+    const hindiVoice = voices.find(v => v.lang.startsWith('hi'));
+    if (hindiVoice && /[\u0900-\u097F]/.test(text)) {
+      utterance.voice = hindiVoice;
+    }
+
+    utterance.onstart = () => { isSpeaking = true; btn.textContent = '⏹️'; };
+    utterance.onend = () => { isSpeaking = false; btn.textContent = '🔊'; };
+    utterance.onerror = () => { isSpeaking = false; btn.textContent = '🔊'; };
+
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function detectLang(text) {
+    const hindiChars = (text.match(/[\u0900-\u097F]/g) || []).length;
+    const total = text.length;
+    return hindiChars / total > 0.3 ? 'hi-IN' : 'en-IN';
+  }
+
+  // Speech Recognition (Voice Input)
+  function toggleVoice() {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      setVoiceStatus('❌ आपका browser voice input support नहीं करता। Chrome use करें।');
+      return;
+    }
+
+    if (isRecording) {
+      stopVoice();
+    } else {
+      startVoice();
+    }
+  }
+
+  function startVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    recognition = new SpeechRecognition();
+
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = 'hi-IN'; // Hindi primary, also catches English
+
+    recognition.onstart = () => {
+      isRecording = true;
+      const btn = document.getElementById('voiceBtn');
+      btn.classList.add('recording');
+      btn.textContent = '🔴';
+      setVoiceStatus('🎤 बोलिए... (Speaking...)');
+    };
+
+    recognition.onresult = (event) => {
+      let interim = '';
+      let final = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          final += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      const input = document.getElementById('userInput');
+      input.value = final || interim;
+      autoResize(input);
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      const btn = document.getElementById('voiceBtn');
+      btn.classList.remove('recording');
+      btn.textContent = '🎤';
+      setVoiceStatus('');
+
+      const msg = document.getElementById('userInput').value.trim();
+      if (msg) {
+        setTimeout(sendMessage, 300);
+      }
+    };
+
+    recognition.onerror = (e) => {
+      isRecording = false;
+      const btn = document.getElementById('voiceBtn');
+      btn.classList.remove('recording');
+      btn.textContent = '🎤';
+      if (e.error === 'no-speech') {
+        setVoiceStatus('⚠️ कुछ सुनाई नहीं दिया। फिर से कोशिश करें।');
+      } else if (e.error === 'not-allowed') {
+        setVoiceStatus('❌ Microphone permission denied. Browser settings check करें।');
+      } else {
+        setVoiceStatus('❌ Voice error: ' + e.error);
+      }
+      setTimeout(() => setVoiceStatus(''), 3000);
+    };
+
+    recognition.start();
+  }
+
+  function stopVoice() {
+    if (recognition) {
+      recognition.stop();
+    }
+  }
+
+  function setVoiceStatus(msg) {
+    document.getElementById('voiceStatus').textContent = msg;
+  }
+
+  // Clear chat
+  async function clearChat() {
+    if (!confirm('Chat history clear करें? / Clear chat history?')) return;
+    await fetch('/api/clear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId }),
+    });
+    const chatBox = document.getElementById('chatBox');
+    chatBox.innerHTML = `
+      <div class="welcome-msg" id="welcomeMsg">
+        <div class="welcome-icon">👨‍🌾</div>
+        <h2>नमस्ते! मैं किसान मित्र हूँ</h2>
+        <p>खेती, खाद, बीज, फसल, सरकारी योजनाओं — किसी भी विषय पर सवाल पूछें।<br/>
+        आप हिंदी या English में बात कर सकते हैं।<br/><br/>
+        <strong>🎤 Voice feature भी है!</strong> नीचे माइक बटन दबाकर बोलें।</p>
+      </div>
+    `;
+  }
+
+  // Load voices on page load
+  window.speechSynthesis?.getVoices();
+  window.speechSynthesis?.addEventListener('voiceschanged', () => {
+    window.speechSynthesis.getVoices();
+  });
+
+  // Focus input on load
+  document.getElementById('userInput').focus();
+</script>
+
+</body>
+</html>

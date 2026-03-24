@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { GoogleGenAI } = require('@google/genai');
+const OpenAI = require('openai');
 const path = require('path');
 
 const app = express();
@@ -32,7 +32,7 @@ Communication style:
 
 Always prioritize the farmer's wellbeing, food safety, and sustainable farming practices.`;
 
-// In-memory sessions (resets on cold start — acceptable for serverless)
+// In-memory sessions
 const sessions = new Map();
 
 app.post('/api/chat', async (req, res) => {
@@ -40,17 +40,18 @@ app.post('/api/chat', async (req, res) => {
     const { message, sessionId } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: '⚠️ GEMINI_API_KEY not configured. Please set it in Vercel Environment Variables.' });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: '⚠️ OPENAI_API_KEY not configured in Vercel Environment Variables.' });
 
-    const ai = new GoogleGenAI({ apiKey });
+    const openai = new OpenAI({ apiKey });
 
     if (!sessions.has(sessionId)) sessions.set(sessionId, []);
     const history = sessions.get(sessionId);
 
-    const contents = [
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
       ...history,
-      { role: 'user', parts: [{ text: message }] }
+      { role: 'user', content: message }
     ];
 
     // Set SSE headers
@@ -58,23 +59,23 @@ app.post('/api/chat', async (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    const result = await ai.models.generateContentStream({
-      model: 'gemini-2.0-flash',
-      config: { systemInstruction: SYSTEM_PROMPT },
-      contents,
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      stream: true,
     });
 
     let fullResponse = '';
-    for await (const chunk of result) {
-      const text = chunk.text;
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || '';
       if (text) {
         fullResponse += text;
         res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
       }
     }
 
-    history.push({ role: 'user', parts: [{ text: message }] });
-    history.push({ role: 'model', parts: [{ text: fullResponse }] });
+    history.push({ role: 'user', content: message });
+    history.push({ role: 'assistant', content: fullResponse });
     if (history.length > 40) history.splice(0, history.length - 40);
 
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
@@ -83,12 +84,12 @@ app.post('/api/chat', async (req, res) => {
   } catch (error) {
     console.error('Chat error:', error.message);
     let userMessage = 'कुछ गलत हो गया। फिर से कोशिश करें।';
-    if (error.message?.includes('429') || error.message?.includes('quota')) {
-      userMessage = '⚠️ API quota खत्म है। aistudio.google.com पर अलग Google account से नई key बनाएं।';
-    } else if (error.message?.includes('404')) {
-      userMessage = '⚠️ Model not found. Please check your API key is from aistudio.google.com';
-    } else if (error.message?.includes('API_KEY') || error.message?.includes('invalid') || error.message?.includes('400')) {
-      userMessage = '⚠️ Invalid API key. Please check Vercel Environment Variables.';
+    if (error.status === 429) {
+      userMessage = '⚠️ API quota खत्म है। OpenAI account पर billing check करें।';
+    } else if (error.status === 401) {
+      userMessage = '⚠️ Invalid API key. Vercel Environment Variables में OPENAI_API_KEY check करें।';
+    } else if (error.status === 404) {
+      userMessage = '⚠️ Model not found. Please check your OpenAI account access.';
     }
     if (!res.headersSent) {
       res.status(500).json({ error: userMessage });
@@ -108,7 +109,7 @@ app.post('/api/clear', (req, res) => {
 // Local dev
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`🌾 Kisan Mitra AI running at http://localhost:${PORT}`);
+    console.log(`🌾 Kisan Mitra AI (OpenAI) running at http://localhost:${PORT}`);
   });
 }
 

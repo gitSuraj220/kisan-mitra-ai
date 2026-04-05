@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const OpenAI = require('openai');
+const { GoogleGenAI } = require('@google/genai');
 const path = require('path');
 
 const app = express();
@@ -32,50 +32,60 @@ Communication style:
 
 Always prioritize the farmer's wellbeing, food safety, and sustainable farming practices.`;
 
-// In-memory sessions
+// In-memory sessions — store Gemini-format history { role: 'user'|'model', parts: [{text}] }
 const sessions = new Map();
+
+// Init Gemini client
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, sessionId } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: '⚠️ OPENAI_API_KEY not configured in Vercel Environment Variables.' });
-
-    const openai = new OpenAI({ apiKey });
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: '⚠️ GEMINI_API_KEY not configured in Environment Variables.' });
+    }
 
     if (!sessions.has(sessionId)) sessions.set(sessionId, []);
     const history = sessions.get(sessionId);
 
-    const messages = [
-      { role: 'system', content: SYSTEM_PROMPT },
+    // Build contents: history + new user message
+    const contents = [
       ...history,
-      { role: 'user', content: message }
+      { role: 'user', parts: [{ text: message }] },
     ];
 
     // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
 
-    const stream = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      messages,
-      stream: true,
+    const response = await ai.models.generateContentStream({
+      model: 'gemini-2.0-flash',
+      contents,
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        maxOutputTokens: 1024,
+        temperature: 0.7,
+      },
     });
 
     let fullResponse = '';
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content || '';
+    for await (const chunk of response) {
+      const text = chunk.text;
       if (text) {
         fullResponse += text;
         res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
       }
     }
 
-    history.push({ role: 'user', content: message });
-    history.push({ role: 'assistant', content: fullResponse });
+    // Save to history in Gemini format
+    history.push({ role: 'user',  parts: [{ text: message }] });
+    history.push({ role: 'model', parts: [{ text: fullResponse }] });
+    // Keep last 20 exchanges (40 turns)
     if (history.length > 40) history.splice(0, history.length - 40);
 
     res.write(`data: ${JSON.stringify({ type: 'done' })}\n\n`);
@@ -83,14 +93,16 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (error) {
     console.error('Chat error:', error.message);
+
     let userMessage = 'कुछ गलत हो गया। फिर से कोशिश करें।';
-    if (error.status === 429) {
-      userMessage = '⚠️ API quota खत्म है। OpenAI account पर billing check करें।';
-    } else if (error.status === 401) {
-      userMessage = '⚠️ Invalid API key. Vercel Environment Variables में OPENAI_API_KEY check करें।';
-    } else if (error.status === 404) {
-      userMessage = '⚠️ Model not found. Please check your OpenAI account access.';
+    if (error.message?.includes('API_KEY') || error.status === 400) {
+      userMessage = '⚠️ Invalid API key. GEMINI_API_KEY check करें।';
+    } else if (error.status === 429) {
+      userMessage = '⚠️ API quota खत्म है। कुछ देर बाद फिर कोशिश करें।';
+    } else if (error.status === 403) {
+      userMessage = '⚠️ API access denied. Google AI Studio में key check करें।';
     }
+
     if (!res.headersSent) {
       res.status(500).json({ error: userMessage });
     } else {
@@ -109,7 +121,7 @@ app.post('/api/clear', (req, res) => {
 // Local dev
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`🌾 Kisan Mitra AI (OpenAI) running at http://localhost:${PORT}`);
+    console.log(`🌾 Kisan Mitra AI (Gemini) running at http://localhost:${PORT}`);
   });
 }
 

@@ -1,6 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const { GoogleGenAI } = require('@google/genai');
+const OpenAI = require('openai');
 const path = require('path');
 
 const app = express();
@@ -29,62 +29,130 @@ Communication style:
 - Be warm, respectful, and encouraging
 - Give practical, actionable advice with clear quantities/dosages
 - Add relevant emojis occasionally to make responses friendly 🌾
+- When you are given "🔎 Live web results", treat them as the most up-to-date truth and base your answer on them. Mention figures/prices with their source naturally. Never say your knowledge is outdated — use the live results instead.
 
 Always prioritize the farmer's wellbeing, food safety, and sustainable farming practices.`;
 
-// In-memory sessions — store Gemini-format history { role: 'user'|'model', parts: [{text}] }
+// In-memory sessions
 const sessions = new Map();
 
-// Init Gemini client
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Init OpenAI client
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ── Real-time web search via Tavily REST API (no extra dependency) ──
+const FRESH_KEYWORDS = [
+  // English
+  'price', 'rate', 'cost', 'today', 'current', 'latest', 'now', 'this year',
+  'mandi', 'msp', 'weather', 'forecast', 'rain', 'monsoon', 'scheme', 'subsidy',
+  'news', 'update', 'when', '2024', '2025', '2026', '2027',
+  // Hindi
+  'भाव', 'दाम', 'कीमत', 'रेट', 'आज', 'अभी', 'इस साल', 'मंडी', 'मौसम',
+  'बारिश', 'मानसून', 'योजना', 'सब्सिडी', 'समाचार', 'खबर', 'ताज़ा', 'ताजा',
+  'कब', 'वर्तमान', 'नई', 'नया', 'एमएसपी'
+];
+
+function needsFreshData(text) {
+  const lower = text.toLowerCase();
+  return FRESH_KEYWORDS.some(k => lower.includes(k.toLowerCase()));
+}
+
+async function tavilySearch(query) {
+  const apiKey = process.env.TAVILY_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const resp = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        query,
+        search_depth: 'basic',
+        max_results: 5,
+        include_answer: true,
+        topic: 'general',
+      }),
+    });
+    if (!resp.ok) {
+      console.error('Tavily error:', resp.status, await resp.text());
+      return null;
+    }
+    const data = await resp.json();
+    let out = '';
+    if (data.answer) out += `Summary: ${data.answer}\n\n`;
+    if (Array.isArray(data.results)) {
+      out += data.results
+        .map((r, i) => `[${i + 1}] ${r.title}\n${r.content}\nSource: ${r.url}`)
+        .join('\n\n');
+    }
+    return out.trim() || null;
+  } catch (e) {
+    console.error('Tavily fetch failed:', e.message);
+    return null;
+  }
+}
 
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, sessionId } = req.body;
     if (!message?.trim()) return res.status(400).json({ error: 'Message is required' });
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: '⚠️ GEMINI_API_KEY not configured in Environment Variables.' });
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: '⚠️ OPENAI_API_KEY not configured.' });
     }
 
     if (!sessions.has(sessionId)) sessions.set(sessionId, []);
     const history = sessions.get(sessionId);
 
-    // Build contents: history + new user message
-    const contents = [
-      ...history,
-      { role: 'user', parts: [{ text: message }] },
-    ];
+    // Current date context (so the model never says "data till 2023")
+    const today = new Date().toLocaleDateString('en-IN', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      timeZone: 'Asia/Kolkata',
+    });
+    let contextBlock = `Today's date is ${today} (India). Answer with this as the current date.`;
 
-    // Set SSE headers
+    // Set SSE headers early
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    const response = await ai.models.generateContentStream({
-      model: 'gemini-2.0-flash',
-      contents,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        maxOutputTokens: 1024,
-        temperature: 0.7,
-      },
+    // Fetch live data when the question looks time-sensitive
+    if (needsFreshData(message)) {
+      res.write(`data: ${JSON.stringify({ type: 'status', content: '🔎 ताज़ा जानकारी खोज रहा हूँ...' })}\n\n`);
+      const live = await tavilySearch(`${message} India farming agriculture latest 2026`);
+      if (live) {
+        contextBlock += `\n\n🔎 Live web results (use these as the latest facts):\n${live}`;
+      }
+    }
+
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: contextBlock },
+      ...history,
+      { role: 'user', content: message },
+    ];
+
+    const stream = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages,
+      stream: true,
+      max_tokens: 1024,
+      temperature: 0.7,
     });
 
     let fullResponse = '';
-    for await (const chunk of response) {
-      const text = chunk.text;
+    for await (const chunk of stream) {
+      const text = chunk.choices[0]?.delta?.content || '';
       if (text) {
         fullResponse += text;
         res.write(`data: ${JSON.stringify({ type: 'text', content: text })}\n\n`);
       }
     }
 
-    // Save to history in Gemini format
-    history.push({ role: 'user',  parts: [{ text: message }] });
-    history.push({ role: 'model', parts: [{ text: fullResponse }] });
+    // Save to history
+    history.push({ role: 'user', content: message });
+    history.push({ role: 'assistant', content: fullResponse });
     // Keep last 20 exchanges (40 turns)
     if (history.length > 40) history.splice(0, history.length - 40);
 
@@ -95,12 +163,12 @@ app.post('/api/chat', async (req, res) => {
     console.error('Chat error:', error.message);
 
     let userMessage = 'कुछ गलत हो गया। फिर से कोशिश करें।';
-    if (error.message?.includes('API_KEY') || error.status === 400) {
-      userMessage = '⚠️ Invalid API key. GEMINI_API_KEY check करें।';
-    } else if (error.status === 429) {
-      userMessage = '⚠️ API quota खत्म है। कुछ देर बाद फिर कोशिश करें।';
-    } else if (error.status === 403) {
-      userMessage = '⚠️ API access denied. Google AI Studio में key check करें।';
+    if (error.status === 429) {
+      userMessage = '⚠️ API quota खत्म है। OpenAI account पर billing check करें।';
+    } else if (error.status === 401) {
+      userMessage = '⚠️ Invalid API key. OPENAI_API_KEY check करें।';
+    } else if (error.status === 404) {
+      userMessage = '⚠️ Model not found. Please check your OpenAI account access.';
     }
 
     if (!res.headersSent) {
@@ -121,7 +189,8 @@ app.post('/api/clear', (req, res) => {
 // Local dev
 if (require.main === module) {
   app.listen(PORT, () => {
-    console.log(`🌾 Kisan Mitra AI (Gemini) running at http://localhost:${PORT}`);
+    console.log(`🌾 Kisan Mitra AI (GPT-4o-mini + Tavily) running at http://localhost:${PORT}`);
+    console.log(process.env.TAVILY_API_KEY ? '✅ Real-time search: ON' : '⚠️  TAVILY_API_KEY missing — real-time search OFF');
   });
 }
 
